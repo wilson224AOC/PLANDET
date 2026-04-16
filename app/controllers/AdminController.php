@@ -36,6 +36,13 @@ class AdminController {
 
             if ($meeting->update($id, 'approved', $start, $end)) {
                 $success = "Reunión programada con éxito.";
+                
+                // Obtener datos actualizado de la reunión y enviar notificación
+                $updatedMeeting = $meeting->getById($id);
+                if ($updatedMeeting) {
+                    $notificationService = new MeetingNotificationService();
+                    $notificationService->notifyScheduled($updatedMeeting);
+                }
             } else {
                 $error = "Error al programar la reunión.";
             }
@@ -62,12 +69,28 @@ class AdminController {
 
             $meeting = new Meeting();
             $meeting->reject($id, $motivo_rechazo);
+            
+            // Obtener datos actualizado de la reunión y enviar notificación
+            $updatedMeeting = $meeting->getById($id);
+            if ($updatedMeeting) {
+                $notificationService = new MeetingNotificationService();
+                $notificationService->notifyRejected($updatedMeeting);
+            }
+            
             header('Location: index.php?controller=admin&action=index');
             exit;
 
         } elseif (isset($_GET['id'])) {
             $meeting = new Meeting();
             $meeting->reject($_GET['id']);
+            
+            // Obtener datos actualizado de la reunión y enviar notificación
+            $updatedMeeting = $meeting->getById($_GET['id']);
+            if ($updatedMeeting) {
+                $notificationService = new MeetingNotificationService();
+                $notificationService->notifyRejected($updatedMeeting);
+            }
+            
             header('Location: index.php?controller=admin&action=index');
             exit;
         }

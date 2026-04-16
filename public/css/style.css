@@ -61,6 +61,8 @@ body {
 .schedule-slot.active-slot {
     background-color: #0d6efd;
     color: #fff;
+    border-color: #0d6efd !important;
+    box-shadow: none !important;
 }
 
 .weekly-calendar {

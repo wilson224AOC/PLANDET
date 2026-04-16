@@ -1,14 +1,14 @@
 <?php
 
 return [
-    'enabled' => false,
-    'host' => '',
+    'enabled' => true,
+    'host' => 'smtp.gmail.com',
     'port' => 587,
     'encryption' => 'tls',
-    'username' => '',
-    'password' => '',
-    'from_email' => '',
-    'from_name' => 'PLANDET',
-    'reply_to' => '',
+    'username' => 'plandetconferencias@gmail.com',
+    'password' => 'xqwaluncgfrqvydv',
+    'from_email' => 'plandetconferencias@gmail.com',
+    'from_name' => 'PLANDET - Sistema de Reuniones',
+    'reply_to' => 'plandetconferencias@gmail.com',
     'timeout' => 20,
 ];
