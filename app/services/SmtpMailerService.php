@@ -3,9 +3,11 @@
 class SmtpMailerService {
     private array $config;
     private $socket = null;
+    private EmailValidationService $emailValidator;
 
     public function __construct() {
         $this->config = require __DIR__ . '/../../config/smtp.php';
+        $this->emailValidator = new EmailValidationService();
     }
 
     public function sendEmail(string $toEmail, string $toName, string $subject, string $htmlBody, string $textBody): array {
@@ -17,13 +19,16 @@ class SmtpMailerService {
             ];
         }
 
-        if (!filter_var($toEmail, FILTER_VALIDATE_EMAIL)) {
+        $emailValidation = $this->emailValidator->validate($toEmail);
+        if (!$emailValidation['valid']) {
             return [
                 'success' => false,
                 'status' => 'failed',
-                'error' => 'Correo de destino invalido',
+                'error' => $emailValidation['error'],
             ];
         }
+
+        $toEmail = $emailValidation['normalized_email'];
 
         $host = trim((string) ($this->config['host'] ?? ''));
         $username = trim((string) ($this->config['username'] ?? ''));

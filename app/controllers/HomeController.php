@@ -1,5 +1,7 @@
 <?php
 class HomeController {
+    private const FORM_SESSION_KEY = 'meeting_form_data';
+
     private function pullFlash(string $key): ?string {
         if (!isset($_SESSION[$key])) {
             return null;
@@ -12,12 +14,18 @@ class HomeController {
 
     public function index() {
         $success = $this->pullFlash('flash_success');
+        $error = $this->pullFlash('flash_error');
         $warning = $this->pullFlash('flash_warning');
+        $info = $this->pullFlash('flash_info');
+        $formData = $this->getFormData();
+        $verificationService = new EmailVerificationService();
+        $verificationStatus = $verificationService->getStatus($formData['correo'] ?? null);
         require_once '../app/views/home/index.php';
     }
 
     public function store() {
         if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+            $this->storeFormData($_POST);
 
             $meeting = new Meeting();
 
@@ -47,12 +55,37 @@ class HomeController {
                 return;
             }
 
+            $emailValidator = new EmailValidationService();
+            $emailValidation = $emailValidator->validate($correo);
+            if (!$emailValidation['valid']) {
+                $error = $emailValidation['error'];
+                $formData = $this->getFormData();
+                $verificationStatus = (new EmailVerificationService())->getStatus($formData['correo'] ?? null);
+                require_once '../app/views/home/index.php';
+                return;
+            }
+
+            $correo = $emailValidation['normalized_email'];
+
+            $verificationService = new EmailVerificationService();
+            if (!$verificationService->isVerified($correo)) {
+                $error = "Debe verificar su correo con el codigo antes de enviar la solicitud.";
+                $formData = $this->getFormData();
+                $verificationStatus = $verificationService->getStatus($formData['correo'] ?? null);
+                require_once '../app/views/home/index.php';
+                return;
+            }
+
+            $_SESSION[self::FORM_SESSION_KEY]['correo'] = $correo;
+
             $fechaAVerificar = !empty($requested_date) ? $requested_date : date('Y-m-d');
 
-            if ($meeting->hasActiveMeetingOnDate($dni, $fechaAVerificar)) {
-                $error = "Ya tiene una solicitud pendiente o aprobada para el dia "
-                         . date('d/m/Y', strtotime($fechaAVerificar))
-                         . ". No puede registrar otra para la misma fecha.";
+            if ($meeting->hasActiveMeetingOnDate($dni, $fechaAVerificar, $area)) {
+                $error = "Ya tiene una solicitud pendiente o aprobada para el area <strong>{$area}</strong> "
+                         . "el dia " . date('d/m/Y', strtotime($fechaAVerificar))
+                         . ". No puede registrar otra para la misma area y fecha.";
+                $formData = $this->getFormData();
+                $verificationStatus = $verificationService->getStatus($formData['correo'] ?? null);
                 require_once '../app/views/home/index.php';
                 return;
             }
@@ -78,15 +111,71 @@ class HomeController {
                 }
 
                 $success = "Solicitud enviada con exito. Su codigo de seguimiento es: " . $code;
+                $this->clearFormData();
+                $verificationService->clear();
+                $formData = [];
+                $verificationStatus = $verificationService->getStatus(null);
                 if (isset($notifyResult) && !$notifyResult['success']) {
                     $warning = "La solicitud se registro, pero hubo un problema al enviar una o mas notificaciones.";
                 }
             } else {
                 $error = "Hubo un error al enviar la solicitud.";
+                $formData = $this->getFormData();
+                $verificationStatus = $verificationService->getStatus($formData['correo'] ?? null);
             }
 
             require_once '../app/views/home/index.php';
         }
+    }
+
+    public function requestEmailVerification() {
+        if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
+            header('Location: index.php');
+            exit;
+        }
+
+        $this->storeFormData($_POST);
+
+        $correo = trim($_POST['correo'] ?? '');
+        $fullName = trim(
+            trim($_POST['nombres'] ?? '') . ' ' . trim($_POST['apellidos'] ?? '')
+        );
+
+        $verificationService = new EmailVerificationService();
+        $result = $verificationService->requestCode($correo, $fullName);
+
+        if ($result['success']) {
+            $_SESSION['flash_info'] = 'Enviamos un codigo de verificacion a ' . $result['email'] . '. Revise su bandeja y luego ingrese el codigo.';
+        } else {
+            $_SESSION['flash_error'] = $result['error'];
+        }
+
+        header('Location: index.php');
+        exit;
+    }
+
+    public function confirmEmailVerification() {
+        if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
+            header('Location: index.php');
+            exit;
+        }
+
+        $this->storeFormData($_POST);
+
+        $correo = trim($_POST['correo'] ?? '');
+        $verificationCode = trim($_POST['verification_code'] ?? '');
+
+        $verificationService = new EmailVerificationService();
+        $result = $verificationService->verifyCode($correo, $verificationCode);
+
+        if ($result['success']) {
+            $_SESSION['flash_success'] = 'Correo verificado correctamente. Ya puede enviar la solicitud.';
+        } else {
+            $_SESSION['flash_error'] = $result['error'];
+        }
+
+        header('Location: index.php');
+        exit;
     }
 
     public function calendar() {
@@ -138,6 +227,30 @@ class HomeController {
         }
 
         require_once '../app/views/cliente/seguimiento.php';
+    }
+
+    private function storeFormData(array $source): void {
+        $_SESSION[self::FORM_SESSION_KEY] = [
+            'dni' => trim($source['dni'] ?? ''),
+            'nombres' => trim($source['nombres'] ?? ''),
+            'apellidos' => trim($source['apellidos'] ?? ''),
+            'telefono' => trim($source['telefono'] ?? ''),
+            'tipo_area' => trim($source['tipo_area'] ?? ''),
+            'correo' => trim($source['correo'] ?? ''),
+            'requested_date' => trim($source['requested_date'] ?? ''),
+            'tipo_motivo' => trim($source['tipo_motivo'] ?? ''),
+            'descripcion' => trim($source['descripcion'] ?? ''),
+            'verification_code' => trim($source['verification_code'] ?? ''),
+        ];
+    }
+
+    private function getFormData(): array {
+        $data = $_SESSION[self::FORM_SESSION_KEY] ?? [];
+        return is_array($data) ? $data : [];
+    }
+
+    private function clearFormData(): void {
+        unset($_SESSION[self::FORM_SESSION_KEY]);
     }
 }
 ?>

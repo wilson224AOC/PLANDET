@@ -141,6 +141,56 @@ tr.hidden-row  { display: none; }
     max-width: 180px;
     word-break: break-word;
 }
+
+/* Slot states */
+.schedule-slot {
+    width: 100%;
+    text-align: center;
+    transition: background 0.15s, border-color 0.15s;
+}
+.schedule-slot.active-slot {
+    background-color: #0d6efd !important;
+    color: #fff !important;
+    border-color: #0d6efd !important;
+}
+.schedule-slot.slot-occupied {
+    background-color: #f8d7da !important;
+    color: #842029 !important;
+    border-color: #f5c2c7 !important;
+    cursor: not-allowed;
+    text-decoration: line-through;
+}
+.schedule-slot.slot-past {
+    opacity: 0.45;
+    cursor: not-allowed;
+}
+.slot-legend {
+    display: flex;
+    gap: 14px;
+    flex-wrap: wrap;
+    margin-bottom: 8px;
+    font-size: 0.82rem;
+}
+.slot-legend span {
+    display: flex;
+    align-items: center;
+    gap: 5px;
+}
+#meetings-table td:nth-child(5) {
+    max-width: 200px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+.slot-legend .dot {
+    width: 12px; height: 12px;
+    border-radius: 3px;
+    display: inline-block;
+}
+.dot-free     { background: #e9ecef; border: 1px solid #ced4da; }
+.dot-occupied { background: #f8d7da; border: 1px solid #f5c2c7; }
+.dot-past     { background: #e9ecef; border: 1px solid #ced4da; opacity: 0.4; }
+.dot-selected { background: #0d6efd; }
 </style>
 
 <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:16px;">
@@ -250,8 +300,9 @@ tr.hidden-row  { display: none; }
                 </td>
                 <td><?php echo htmlspecialchars($m['telefono']); ?></td>
                 <td><?php echo htmlspecialchars($m['area'] ?? '-'); ?></td>
-                <td><?php echo htmlspecialchars($motivoPrincipal); ?></td>
-
+                <td title="<?php echo htmlspecialchars($motivoPrincipal); ?>">
+                    <?php echo htmlspecialchars($motivoPrincipal); ?>
+                </td>
                 <td><?php echo htmlspecialchars($m['requested_date']); ?></td>
 
                 <td>
@@ -329,13 +380,22 @@ tr.hidden-row  { display: none; }
                                             <label class="form-label">Fecha</label>
                                             <input type="date" class="form-control"
                                                    id="date-<?php echo $m['id']; ?>"
-                                                   value="<?php echo $defaultDate; ?>">
+                                                   value="<?php echo $defaultDate; ?>"
+                                                   min="<?php echo date('Y-m-d'); ?>">
                                         </div>
                                         <div class="mb-2">
                                             <small class="text-muted">
                                                 Horario de atención: 7:30 – 12:00 y 13:00 – 17:00 (bloques de 30 min).
                                             </small>
                                         </div>
+
+                                        <div class="slot-legend">
+                                            <span><span class="dot dot-free"></span> Disponible</span>
+                                            <span><span class="dot dot-occupied"></span> Ocupado</span>
+                                            <span><span class="dot dot-past"></span> Hora pasada</span>
+                                            <span><span class="dot dot-selected"></span> Seleccionado</span>
+                                        </div>
+
                                         <div class="schedule-grid-wrapper">
                                             <table class="table table-sm table-bordered schedule-table">
                                                 <thead>
@@ -343,18 +403,13 @@ tr.hidden-row  { display: none; }
                                                 </thead>
                                                 <tbody>
                                                     <?php foreach ($timeSlots as $slot): ?>
-                                                        <?php
-                                                            $startTime = DateTime::createFromFormat('H:i', $slot);
-                                                            $endTime   = clone $startTime;
-                                                            $endTime->modify('+30 minutes');
-                                                        ?>
                                                         <tr>
                                                             <td>
                                                                 <button type="button"
                                                                         class="btn btn-outline-secondary btn-sm schedule-slot"
                                                                         data-meeting-id="<?php echo $m['id']; ?>"
                                                                         data-time="<?php echo $slot; ?>">
-                                                                    <?php echo $slot; ?> – <?php echo $endTime->format('H:i'); ?>
+                                                                    <?php echo $slot; ?>
                                                                 </button>
                                                             </td>
                                                         </tr>
@@ -417,6 +472,11 @@ tr.hidden-row  { display: none; }
 </div>
 
 <script>
+const OCCUPIED_SLOTS = <?php echo json_encode($occupiedSlotsMap ?? []); ?>;
+const SERVER_NOW     = <?php echo json_encode(date('Y-m-d\TH:i')); ?>;
+</script>
+
+<script>
 document.addEventListener('DOMContentLoaded', function () {
 
     var searchInput  = document.getElementById('search-input');
@@ -425,28 +485,28 @@ document.addEventListener('DOMContentLoaded', function () {
     var resultInfo   = document.getElementById('search-result-info');
     var filterEstado = document.getElementById('filter-estado');
     var filterMotivo = document.getElementById('filter-motivo');
-    var filterArea = document.getElementById('filter-area');
+    var filterArea   = document.getElementById('filter-area');
     var allRows      = document.querySelectorAll('#meetings-table tbody tr');
 
     function applyFilters() {
-        var query       = searchInput.value.trim().toLowerCase();
-        var estadoVal   = filterEstado.value.toLowerCase();
-        var motivoVal   = filterMotivo.value.toLowerCase();
-        var areaVal = filterArea.value.toLowerCase();
-        var found       = 0;
-        var isFiltering = query !== '' || estadoVal !== '' || motivoVal !== '';
+        var query     = searchInput.value.trim().toLowerCase();
+        var estadoVal = filterEstado.value.toLowerCase();
+        var motivoVal = filterMotivo.value.toLowerCase();
+        var areaVal   = filterArea.value.toLowerCase();
+        var found     = 0;
+        var isFiltering = query !== '' || estadoVal !== '' || motivoVal !== '' || areaVal !== '';
 
         allRows.forEach(function(row) {
             var code   = (row.getAttribute('data-code')   || '').toLowerCase();
             var dni    = (row.getAttribute('data-dni')    || '').toLowerCase();
             var status = (row.getAttribute('data-status') || '').toLowerCase();
             var motivo = (row.getAttribute('data-motivo') || '').toLowerCase();
-            var area = (row.getAttribute('data-area') || '').toLowerCase();
+            var area   = (row.getAttribute('data-area')   || '').toLowerCase();
 
             var matchSearch = query === '' || code.includes(query) || dni.includes(query);
             var matchEstado = estadoVal === '' || status === estadoVal;
             var matchMotivo = motivoVal === '' || motivo.includes(motivoVal);
-            var matchArea = areaVal === '' || area.includes(areaVal);
+            var matchArea   = areaVal   === '' || area.includes(areaVal);
 
             if (matchSearch && matchEstado && matchMotivo && matchArea) {
                 row.classList.remove('hidden-row');
@@ -476,7 +536,7 @@ document.addEventListener('DOMContentLoaded', function () {
         searchInput.value  = '';
         filterEstado.value = '';
         filterMotivo.value = '';
-        filterArea.value = '';
+        filterArea.value   = '';
         resultInfo.textContent = '';
         allRows.forEach(function(row) {
             row.classList.remove('hidden-row', 'highlight-row');
@@ -492,8 +552,119 @@ document.addEventListener('DOMContentLoaded', function () {
     filterMotivo.addEventListener('change', applyFilters);
     filterArea.addEventListener('change', applyFilters);
 
+    function timeToMinutes(hhmm) {
+        var parts = hhmm.split(':');
+        return parseInt(parts[0], 10) * 60 + parseInt(parts[1], 10);
+    }
+
+    function minutesToTime(mins) {
+        var h = Math.floor(mins / 60);
+        var m = mins % 60;
+        return String(h).padStart(2, '0') + ':' + String(m).padStart(2, '0');
+    }
+
+    function getAreaForModal(modal) {
+        var meetRow = document.querySelector(
+            '#meetings-table tbody tr button[data-bs-target="#' + modal.id + '"]'
+        );
+        return meetRow ? meetRow.closest('tr').getAttribute('data-area') : '';
+    }
+
+    function isOccupied(slotStartHHMM, durationMins, area, date) {
+        var key      = (area || '').toLowerCase() + '|' + date;
+        var occupied = OCCUPIED_SLOTS[key] || [];
+        var slotStart = timeToMinutes(slotStartHHMM);
+        var slotEnd   = slotStart + durationMins;
+        for (var i = 0; i < occupied.length; i++) {
+            var occStart = timeToMinutes(occupied[i].start);
+            var occEnd   = timeToMinutes(occupied[i].end);
+            if (slotStart < occEnd && slotEnd > occStart) return true;
+        }
+        return false;
+    }
+
+    function isPast(date, slotStartHHMM) {
+        var slotDatetime = new Date(date + 'T' + slotStartHHMM + ':00');
+        var now          = new Date(SERVER_NOW + ':00');
+        return slotDatetime <= now;
+    }
+
+    function renderSlots(meetingId, area) {
+        var dateInput      = document.getElementById('date-' + meetingId);
+        var durationSelect = document.getElementById('duration-' + meetingId);
+        var date           = dateInput  ? dateInput.value              : '';
+        var duration       = durationSelect ? parseInt(durationSelect.value, 10) : 30;
+        if (!duration || duration <= 0) duration = 30;
+
+        var lunchStart = timeToMinutes('12:00');
+        var lunchEnd   = timeToMinutes('13:00');
+        var dayEnd     = timeToMinutes('17:00');
+
+        document.querySelectorAll(
+            '.schedule-slot[data-meeting-id="' + meetingId + '"]'
+        ).forEach(function(btn) {
+            var startHHMM = btn.getAttribute('data-time');
+            var startMins = timeToMinutes(startHHMM);
+            var endMins   = startMins + duration;
+            var endHHMM   = minutesToTime(endMins);
+
+            btn.textContent = startHHMM + ' – ' + endHHMM;
+
+            btn.disabled = false;
+            btn.classList.remove(
+                'btn-danger', 'btn-secondary',
+                'slot-occupied', 'slot-past'
+            );
+            btn.classList.add('btn-outline-secondary');
+            btn.title = '';
+
+            if (!date) return;
+
+            if (startMins < lunchStart && endMins > lunchStart) {
+                btn.disabled = true;
+                btn.classList.remove('btn-outline-secondary');
+                btn.classList.add('btn-secondary');
+                btn.title = 'Esta duración cruza el horario de almuerzo (12:00–13:00)';
+                return;
+            }
+
+            if (endMins > dayEnd) {
+                btn.disabled = true;
+                btn.classList.remove('btn-outline-secondary');
+                btn.classList.add('btn-secondary');
+                btn.title = 'Esta duración excede el horario de atención (hasta 17:00)';
+                return;
+            }
+
+            if (isPast(date, startHHMM)) {
+                btn.disabled = true;
+                btn.classList.remove('btn-outline-secondary');
+                btn.classList.add('btn-secondary', 'slot-past');
+                btn.title = 'Hora pasada';
+                return;
+            }
+
+            if (isOccupied(startHHMM, duration, area, date)) {
+                btn.disabled = true;
+                btn.classList.remove('btn-outline-secondary');
+                btn.classList.add('btn-danger', 'slot-occupied');
+                btn.title = 'Ya existe una reunión en este horario para esta área';
+            }
+        });
+    }
+
+    function clearSelection(meetingId) {
+        document.getElementById('scheduled_start_' + meetingId).value = '';
+        document.getElementById('scheduled_end_'   + meetingId).value = '';
+        document.querySelectorAll(
+            '.schedule-slot[data-meeting-id="' + meetingId + '"]'
+        ).forEach(function(b) { b.classList.remove('active-slot'); });
+    }
+
     document.querySelectorAll('.schedule-slot').forEach(function(button) {
         button.addEventListener('click', function() {
+            if (this.disabled) return;
+
             var meetingId      = this.getAttribute('data-meeting-id');
             var time           = this.getAttribute('data-time');
             var dateInput      = document.getElementById('date-' + meetingId);
@@ -504,39 +675,49 @@ document.addEventListener('DOMContentLoaded', function () {
                 return;
             }
 
-            document.querySelectorAll('.schedule-slot[data-meeting-id="' + meetingId + '"]').forEach(function(btn) {
-                btn.classList.remove('active-slot');
-            });
+            document.querySelectorAll(
+                '.schedule-slot[data-meeting-id="' + meetingId + '"]'
+            ).forEach(function(btn) { btn.classList.remove('active-slot'); });
             this.classList.add('active-slot');
 
-            var dateValue = dateInput.value;
-            var dateObj   = new Date(dateValue + 'T' + time + ':00');
-            var duration  = durationSelect ? parseInt(durationSelect.value, 10) : 30;
+            var duration = durationSelect ? parseInt(durationSelect.value, 10) : 30;
             if (isNaN(duration) || duration <= 0) duration = 30;
-            dateObj.setMinutes(dateObj.getMinutes() + duration);
 
-            var endHours   = String(dateObj.getHours()).padStart(2, '0');
-            var endMinutes = String(dateObj.getMinutes()).padStart(2, '0');
+            var endMins  = timeToMinutes(time) + duration;
+            var endHHMM  = minutesToTime(endMins);
 
-            document.getElementById('scheduled_start_' + meetingId).value = dateValue + 'T' + time;
-            document.getElementById('scheduled_end_'   + meetingId).value = dateValue + 'T' + endHours + ':' + endMinutes;
+            document.getElementById('scheduled_start_' + meetingId).value =
+                dateInput.value + 'T' + time;
+            document.getElementById('scheduled_end_'   + meetingId).value =
+                dateInput.value + 'T' + endHHMM;
         });
     });
 
     document.querySelectorAll('.schedule-duration').forEach(function(select) {
         select.addEventListener('change', function() {
-            var meetingId  = this.id.replace('duration-', '');
-            var startInput = document.getElementById('scheduled_start_' + meetingId);
-            var endInput   = document.getElementById('scheduled_end_'   + meetingId);
-            if (!startInput.value) return;
+            var meetingId = this.id.replace('duration-', '');
+            var modal     = this.closest('.modal');
+            var area      = getAreaForModal(modal);
+            clearSelection(meetingId);
+            renderSlots(meetingId, area);
+        });
+    });
 
-            var duration  = parseInt(this.value, 10);
-            if (isNaN(duration) || duration <= 0) duration = 30;
-            var startDate = new Date(startInput.value + ':00');
-            startDate.setMinutes(startDate.getMinutes() + duration);
-            var endHours   = String(startDate.getHours()).padStart(2, '0');
-            var endMinutes = String(startDate.getMinutes()).padStart(2, '0');
-            endInput.value = startInput.value.substring(0, 10) + 'T' + endHours + ':' + endMinutes;
+    document.querySelectorAll('input[type="date"][id^="date-"]').forEach(function(dateInput) {
+        dateInput.addEventListener('change', function() {
+            var meetingId = this.id.replace('date-', '');
+            var modal     = this.closest('.modal');
+            var area      = getAreaForModal(modal);
+            clearSelection(meetingId);
+            renderSlots(meetingId, area);
+        });
+    });
+
+    document.querySelectorAll('.modal[id^="modalSchedule"]').forEach(function(modal) {
+        modal.addEventListener('show.bs.modal', function() {
+            var meetingId = modal.id.replace('modalSchedule', '');
+            var area      = getAreaForModal(modal);
+            renderSlots(meetingId, area);
         });
     });
 
