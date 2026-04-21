@@ -109,22 +109,22 @@ class HomeController {
                     $notificationService = new MeetingNotificationService();
                     $notifyResult = $notificationService->notifyCreated($savedMeeting);
                 }
-
-                $success = "Solicitud enviada con exito. Su codigo de seguimiento es: " . $code;
                 $this->clearFormData();
                 $verificationService->clear();
-                $formData = [];
-                $verificationStatus = $verificationService->getStatus(null);
-                if (isset($notifyResult) && !$notifyResult['success']) {
-                    $warning = "La solicitud se registro, pero hubo un problema al enviar una o mas notificaciones.";
-                }
+                // Redirigir a la página de confirmación
+                header('Location: index.php?controller=home&action=confirmacion&codigo=' . urlencode($code));
+                exit;
             } else {
                 $error = "Hubo un error al enviar la solicitud.";
                 $formData = $this->getFormData();
                 $verificationStatus = $verificationService->getStatus($formData['correo'] ?? null);
+                require_once '../app/views/home/index.php';
             }
-
-            require_once '../app/views/home/index.php';
+            // Nueva acción para mostrar la confirmación
+            public function confirmacion() {
+                $codigo = isset($_GET['codigo']) ? $_GET['codigo'] : '';
+                require_once '../app/views/home/confirmacion.php';
+            }
         }
     }
 
