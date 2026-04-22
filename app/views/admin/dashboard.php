@@ -302,7 +302,7 @@ tr.hidden-row  { display: none; }
                 <td><?php echo htmlspecialchars($m['area'] ?? '-'); ?></td>
                 <td title="<?php echo htmlspecialchars($motivoPrincipal); ?>">
                     <?php echo htmlspecialchars($motivoPrincipal); ?>
-                </td>
+                git push -u origin main</td>
                 <td><?php echo htmlspecialchars($m['requested_date']); ?></td>
 
                 <td>

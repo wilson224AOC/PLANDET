@@ -24,108 +24,114 @@ class HomeController {
     }
 
     public function store() {
-        if ($_SERVER['REQUEST_METHOD'] === 'POST') {
-            $this->storeFormData($_POST);
-
-            $meeting = new Meeting();
-
-            $dni            = trim($_POST['dni'] ?? '');
-            $nombres        = trim($_POST['nombres'] ?? '');
-            $apellidos      = trim($_POST['apellidos'] ?? '');
-            $telefono       = trim($_POST['telefono'] ?? '');
-            $area           = trim($_POST['tipo_area'] ?? '');
-            $correo         = trim($_POST['correo'] ?? '');
-            $tipo_motivo    = trim($_POST['tipo_motivo'] ?? '');
-            $descripcion    = trim($_POST['descripcion'] ?? '');
-            $requested_date = !empty($_POST['requested_date']) ? $_POST['requested_date'] : null;
-
-            if (
-                empty($dni) || empty($nombres) || empty($apellidos) ||
-                empty($telefono) || empty($correo) ||
-                empty($tipo_motivo) || empty($descripcion)
-            ) {
-                $error = "Todos los campos son obligatorios";
-                require_once '../app/views/home/index.php';
-                return;
-            }
-
-            if (empty($area)) {
-                $error = "Debe seleccionar una area";
-                require_once '../app/views/home/index.php';
-                return;
-            }
-
-            $emailValidator = new EmailValidationService();
-            $emailValidation = $emailValidator->validate($correo);
-            if (!$emailValidation['valid']) {
-                $error = $emailValidation['error'];
-                $formData = $this->getFormData();
-                $verificationStatus = (new EmailVerificationService())->getStatus($formData['correo'] ?? null);
-                require_once '../app/views/home/index.php';
-                return;
-            }
-
-            $correo = $emailValidation['normalized_email'];
-
-            $verificationService = new EmailVerificationService();
-            if (!$verificationService->isVerified($correo)) {
-                $error = "Debe verificar su correo con el codigo antes de enviar la solicitud.";
-                $formData = $this->getFormData();
-                $verificationStatus = $verificationService->getStatus($formData['correo'] ?? null);
-                require_once '../app/views/home/index.php';
-                return;
-            }
-
-            $_SESSION[self::FORM_SESSION_KEY]['correo'] = $correo;
-
-            $fechaAVerificar = !empty($requested_date) ? $requested_date : date('Y-m-d');
-
-            if ($meeting->hasActiveMeetingOnDate($dni, $fechaAVerificar, $area)) {
-                $error = "Ya tiene una solicitud pendiente o aprobada para el area <strong>{$area}</strong> "
-                         . "el dia " . date('d/m/Y', strtotime($fechaAVerificar))
-                         . ". No puede registrar otra para la misma area y fecha.";
-                $formData = $this->getFormData();
-                $verificationStatus = $verificationService->getStatus($formData['correo'] ?? null);
-                require_once '../app/views/home/index.php';
-                return;
-            }
-
-            $motivo = $tipo_motivo . ": " . $descripcion;
-
-            $code = $meeting->create(
-                $dni,
-                $nombres,
-                $apellidos,
-                $telefono,
-                $area,
-                $correo,
-                $motivo,
-                $requested_date
-            );
-
-            if ($code) {
-                $savedMeeting = $meeting->getByCode($code);
-                if ($savedMeeting) {
-                    $notificationService = new MeetingNotificationService();
-                    $notifyResult = $notificationService->notifyCreated($savedMeeting);
-                }
-                $this->clearFormData();
-                $verificationService->clear();
-                // Redirigir a la página de confirmación
-                header('Location: index.php?controller=home&action=confirmacion&codigo=' . urlencode($code));
-                exit;
-            } else {
-                $error = "Hubo un error al enviar la solicitud.";
-                $formData = $this->getFormData();
-                $verificationStatus = $verificationService->getStatus($formData['correo'] ?? null);
-                require_once '../app/views/home/index.php';
-            }
-            // Nueva acción para mostrar la confirmación
-            public function confirmacion() {
-                $codigo = isset($_GET['codigo']) ? $_GET['codigo'] : '';
-                require_once '../app/views/home/confirmacion.php';
-            }
+        if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
+            header('Location: index.php');
+            exit;
         }
+
+        $this->storeFormData($_POST);
+
+        $meeting = new Meeting();
+
+        $dni            = trim($_POST['dni'] ?? '');
+        $nombres        = trim($_POST['nombres'] ?? '');
+        $apellidos      = trim($_POST['apellidos'] ?? '');
+        $telefono       = trim($_POST['telefono'] ?? '');
+        $area           = trim($_POST['tipo_area'] ?? '');
+        $correo         = trim($_POST['correo'] ?? '');
+        $tipo_motivo    = trim($_POST['tipo_motivo'] ?? '');
+        $descripcion    = trim($_POST['descripcion'] ?? '');
+        $requested_date = !empty($_POST['requested_date']) ? $_POST['requested_date'] : null;
+
+        if (
+            empty($dni) || empty($nombres) || empty($apellidos) ||
+            empty($telefono) || empty($correo) ||
+            empty($tipo_motivo) || empty($descripcion)
+        ) {
+            $error = "Todos los campos son obligatorios";
+            $formData = $this->getFormData();
+            $verificationStatus = (new EmailVerificationService())->getStatus($formData['correo'] ?? null);
+            require_once '../app/views/home/index.php';
+            return;
+        }
+
+        if (empty($area)) {
+            $error = "Debe seleccionar una area";
+            $formData = $this->getFormData();
+            $verificationStatus = (new EmailVerificationService())->getStatus($formData['correo'] ?? null);
+            require_once '../app/views/home/index.php';
+            return;
+        }
+
+        $emailValidator = new EmailValidationService();
+        $emailValidation = $emailValidator->validate($correo);
+        if (!$emailValidation['valid']) {
+            $error = $emailValidation['error'];
+            $formData = $this->getFormData();
+            $verificationStatus = (new EmailVerificationService())->getStatus($formData['correo'] ?? null);
+            require_once '../app/views/home/index.php';
+            return;
+        }
+
+        $correo = $emailValidation['normalized_email'];
+
+        $verificationService = new EmailVerificationService();
+        if (!$verificationService->isVerified($correo)) {
+            $error = "Debe verificar su correo con el codigo antes de enviar la solicitud.";
+            $formData = $this->getFormData();
+            $verificationStatus = $verificationService->getStatus($formData['correo'] ?? null);
+            require_once '../app/views/home/index.php';
+            return;
+        }
+
+        $_SESSION[self::FORM_SESSION_KEY]['correo'] = $correo;
+
+        $fechaAVerificar = !empty($requested_date) ? $requested_date : date('Y-m-d');
+
+        if ($meeting->hasActiveMeetingOnDate($dni, $fechaAVerificar, $area)) {
+            $error = "Ya tiene una solicitud pendiente o aprobada para el area <strong>{$area}</strong> "
+                     . "el dia " . date('d/m/Y', strtotime($fechaAVerificar))
+                     . ". No puede registrar otra para la misma area y fecha.";
+            $formData = $this->getFormData();
+            $verificationStatus = $verificationService->getStatus($formData['correo'] ?? null);
+            require_once '../app/views/home/index.php';
+            return;
+        }
+
+        $motivo = $tipo_motivo . ": " . $descripcion;
+
+        $code = $meeting->create(
+            $dni,
+            $nombres,
+            $apellidos,
+            $telefono,
+            $area,
+            $correo,
+            $motivo,
+            $requested_date
+        );
+
+        if ($code) {
+            $savedMeeting = $meeting->getByCode($code);
+            if ($savedMeeting) {
+                $notificationService = new MeetingNotificationService();
+                $notifyResult = $notificationService->notifyCreated($savedMeeting);
+            }
+            $this->clearFormData();
+            $verificationService->clear();
+            header('Location: index.php?controller=home&action=confirmacion&codigo=' . urlencode($code));
+            exit;
+        }
+
+        $error = "Hubo un error al enviar la solicitud.";
+        $formData = $this->getFormData();
+        $verificationStatus = $verificationService->getStatus($formData['correo'] ?? null);
+        require_once '../app/views/home/index.php';
+    }
+
+    public function confirmacion() {
+        $codigo = isset($_GET['codigo']) ? $_GET['codigo'] : '';
+        require_once '../app/views/home/confirmacion.php';
     }
 
     public function requestEmailVerification() {

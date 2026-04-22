@@ -8,7 +8,7 @@ $codigo = isset($codigo) ? $codigo : '';
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Solicitud de reunión cargada</title>
-    <link rel="stylesheet" href="/PLANDET/public/css/style.css">
+    <link rel="stylesheet" href="css/style.css">
     <style>
         .confirm-card {
             max-width: 420px;
@@ -83,7 +83,7 @@ $codigo = isset($codigo) ? $codigo : '';
         </div>
         <div class="estado">PENDIENTE</div>
         <br>
-        <a href="/PLANDET/public/index.php" class="retorno-btn">&larr; Retorno</a>
+        <a href="index.php" class="retorno-btn">&larr; Retorno</a>
     </div>
     <script>
         function copiarCodigo() {
